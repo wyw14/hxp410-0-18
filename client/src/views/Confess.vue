@@ -5,7 +5,7 @@
       @complete="handleAnimationComplete"
     />
 
-    <div class="card confess-card" v-if="!showAnimation">
+    <div class="card confess-card" v-if="!showAnimation && !showComplete">
       <div class="card-header">
         <span class="icon">🕊️</span>
         <h2>倾诉你的秘密</h2>
@@ -23,6 +23,52 @@
         <div class="char-count">
           {{ secretContent.length }} / 500
         </div>
+      </div>
+
+      <div class="form-group">
+        <label class="form-label">📂 选择主题</label>
+        <div class="option-grid topic-grid">
+          <div
+            v-for="(info, key) in topics"
+            :key="key"
+            class="option-item"
+            :class="{ active: selectedTopic === key }"
+            @click="selectedTopic = key"
+          >
+            <span class="option-icon">{{ info.icon }}</span>
+            <span class="option-label">{{ info.label }}</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label class="form-label">💭 此刻心情</label>
+        <div class="option-grid mood-grid">
+          <div
+            v-for="(info, key) in moods"
+            :key="key"
+            class="option-item"
+            :class="{ active: selectedMood === key }"
+            :style="selectedMood === key ? { borderColor: info.color, background: info.color + '15' } : {}"
+            @click="selectedMood = key"
+          >
+            <span class="option-icon">{{ info.icon }}</span>
+            <span class="option-label">{{ info.label }}</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="form-group privacy-group">
+        <label class="privacy-label">
+          <input type="checkbox" v-model="isPublic" class="privacy-checkbox" />
+          <span class="privacy-text">
+            <span class="privacy-icon">🌍</span>
+            <span>公开分享（他人可随机看到这条秘密）</span>
+          </span>
+        </label>
+        <p class="privacy-hint">
+          {{ isPublic ? '你的故事可能温暖另一个需要治愈的人' : '仅用于统计，不会被任何人看到' }}
+        </p>
       </div>
 
       <div v-if="error" class="error-message">
@@ -81,6 +127,28 @@ const submitting = ref(false)
 const error = ref('')
 const showAnimation = ref(false)
 const showComplete = ref(false)
+const selectedTopic = ref('other')
+const selectedMood = ref('regret')
+const isPublic = ref(true)
+
+const topics = {
+  family: { label: '家庭亲情', icon: '👨‍👩‍👧' },
+  friendship: { label: '友情交往', icon: '🤝' },
+  love: { label: '爱情心事', icon: '💕' },
+  work: { label: '工作职场', icon: '💼' },
+  study: { label: '学业成长', icon: '📚' },
+  self: { label: '自我反思', icon: '🌱' },
+  other: { label: '其他', icon: '✨' }
+}
+
+const moods = {
+  regret: { label: '愧疚后悔', icon: '😔', color: '#f59e0b' },
+  sad: { label: '难过悲伤', icon: '😢', color: '#6366f1' },
+  angry: { label: '愤怒不满', icon: '😠', color: '#ef4444' },
+  confused: { label: '迷茫困惑', icon: '😕', color: '#8b5cf6' },
+  relieved: { label: '如释重负', icon: '😌', color: '#10b981' },
+  hopeful: { label: '充满希望', icon: '😊', color: '#ec4899' }
+}
 
 async function submitSecret() {
   if (!secretContent.value.trim()) {
@@ -103,7 +171,10 @@ async function submitSecret() {
         'Content-Type': 'application/json'
       },
       body: JSON.stringify({
-        content: secretContent.value
+        content: secretContent.value,
+        topic: selectedTopic.value,
+        mood: selectedMood.value,
+        isPublic: isPublic.value
       })
     })
 
@@ -132,6 +203,9 @@ function resetForm() {
   showComplete.value = false
   error.value = ''
   submitting.value = false
+  selectedTopic.value = 'other'
+  selectedMood.value = 'regret'
+  isPublic.value = true
 }
 
 function goHome() {
@@ -189,6 +263,14 @@ function goHome() {
   position: relative;
 }
 
+.form-label {
+  display: block;
+  font-size: 15px;
+  font-weight: 600;
+  color: #333;
+  margin-bottom: 12px;
+}
+
 .secret-input {
   width: 100%;
   padding: 20px;
@@ -225,6 +307,100 @@ function goHome() {
   right: 15px;
   font-size: 13px;
   color: #999;
+}
+
+.option-grid {
+  display: grid;
+  gap: 10px;
+}
+
+.topic-grid {
+  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+}
+
+.mood-grid {
+  grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
+}
+
+.option-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 12px 10px;
+  border: 2px solid #e0e0e0;
+  border-radius: 12px;
+  background: #fafafa;
+  cursor: pointer;
+  transition: all 0.25s ease;
+  user-select: none;
+}
+
+.option-item:hover {
+  border-color: #667eea;
+  background: #f8f9ff;
+  transform: translateY(-2px);
+}
+
+.option-item.active {
+  border-color: #667eea;
+  background: linear-gradient(135deg, rgba(102, 126, 234, 0.1) 0%, rgba(118, 75, 162, 0.1) 100%);
+}
+
+.option-icon {
+  font-size: 28px;
+}
+
+.option-label {
+  font-size: 13px;
+  color: #555;
+  font-weight: 500;
+}
+
+.option-item.active .option-label {
+  color: #667eea;
+  font-weight: 600;
+}
+
+.privacy-group {
+  padding: 18px 20px;
+  background: linear-gradient(135deg, #f0fdf4 0%, #eff6ff 100%);
+  border-radius: 15px;
+  border-left: 4px solid #10b981;
+}
+
+.privacy-label {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  cursor: pointer;
+}
+
+.privacy-checkbox {
+  width: 20px;
+  height: 20px;
+  cursor: pointer;
+  accent-color: #10b981;
+}
+
+.privacy-text {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 15px;
+  color: #333;
+  font-weight: 500;
+}
+
+.privacy-icon {
+  font-size: 18px;
+}
+
+.privacy-hint {
+  margin-top: 8px;
+  margin-left: 32px;
+  font-size: 13px;
+  color: #666;
 }
 
 .error-message {
