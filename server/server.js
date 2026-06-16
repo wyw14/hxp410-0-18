@@ -29,6 +29,10 @@ const MOODS = {
   hopeful: { label: '充满希望', icon: '😊', color: '#ec4899' }
 };
 
+const DEFAULT_TOPIC = 'other';
+const DEFAULT_MOOD = 'regret';
+const DEFAULT_IS_PUBLIC = true;
+
 if (!fs.existsSync(DATA_DIR)) {
   fs.mkdirSync(DATA_DIR, { recursive: true });
 }
@@ -40,17 +44,19 @@ if (!fs.existsSync(SECRETS_FILE)) {
 app.use(cors());
 app.use(express.json());
 
-function readSecrets() {
+function readRawSecrets() {
   const data = fs.readFileSync(SECRETS_FILE, 'utf8');
-  const secrets = JSON.parse(data);
+  return JSON.parse(data);
+}
+
+function readSecrets() {
+  const secrets = readRawSecrets();
   return secrets.map(s => ({
-    id: s.id,
-    content: s.content,
+    ...s,
     status: s.status || '已宽恕',
-    createdAt: s.createdAt,
-    topic: s.topic || 'other',
-    mood: s.mood || 'regret',
-    isPublic: s.isPublic !== undefined ? s.isPublic : true
+    topic: s.topic || DEFAULT_TOPIC,
+    mood: s.mood || DEFAULT_MOOD,
+    isPublic: s.isPublic !== undefined ? Boolean(s.isPublic) : DEFAULT_IS_PUBLIC
   }));
 }
 
@@ -58,12 +64,17 @@ function writeSecrets(secrets) {
   fs.writeFileSync(SECRETS_FILE, JSON.stringify(secrets, null, 2));
 }
 
-function isSameDay(date1, date2) {
-  const d1 = new Date(date1);
-  const d2 = new Date(date2);
-  return d1.getFullYear() === d2.getFullYear() &&
-    d1.getMonth() === d2.getMonth() &&
-    d1.getDate() === d2.getDate();
+function isSameLocalDay(dateStr, referenceDate) {
+  const d = new Date(dateStr);
+  const ref = referenceDate || new Date();
+  return d.getFullYear() === ref.getFullYear() &&
+    d.getMonth() === ref.getMonth() &&
+    d.getDate() === ref.getDate();
+}
+
+function getLocalDayStart(date) {
+  const d = date || new Date();
+  return new Date(d.getFullYear(), d.getMonth(), d.getDate());
 }
 
 app.post('/api/secrets', (req, res) => {
@@ -77,19 +88,19 @@ app.post('/api/secrets', (req, res) => {
     const validTopics = Object.keys(TOPICS);
     const validMoods = Object.keys(MOODS);
 
-    const secrets = readSecrets();
+    const rawSecrets = readRawSecrets();
     const newSecret = {
       id: uuidv4(),
       content: content.trim(),
       status: '已宽恕',
       createdAt: new Date().toISOString(),
-      topic: validTopics.includes(topic) ? topic : 'other',
-      mood: validMoods.includes(mood) ? mood : 'regret',
-      isPublic: isPublic !== undefined ? Boolean(isPublic) : true
+      topic: validTopics.includes(topic) ? topic : DEFAULT_TOPIC,
+      mood: validMoods.includes(mood) ? mood : DEFAULT_MOOD,
+      isPublic: isPublic !== undefined ? Boolean(isPublic) : DEFAULT_IS_PUBLIC
     };
 
-    secrets.push(newSecret);
-    writeSecrets(secrets);
+    rawSecrets.push(newSecret);
+    writeSecrets(rawSecrets);
 
     res.json({
       success: true,
@@ -138,8 +149,7 @@ app.get('/api/stats', (req, res) => {
 
     const total = secrets.length;
 
-    const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-    const todayCount = secrets.filter(s => new Date(s.createdAt) >= todayStart).length;
+    const todayCount = secrets.filter(s => isSameLocalDay(s.createdAt, now)).length;
 
     const publicCount = secrets.filter(s => s.isPublic).length;
     const publicRatio = total > 0 ? Math.round((publicCount / total) * 100) : 0;
@@ -153,11 +163,8 @@ app.get('/api/stats', (req, res) => {
       };
     });
     secrets.forEach(s => {
-      if (topicDistribution[s.topic]) {
-        topicDistribution[s.topic].count++;
-      } else {
-        topicDistribution.other.count++;
-      }
+      const topicKey = TOPICS[s.topic] ? s.topic : DEFAULT_TOPIC;
+      topicDistribution[topicKey].count++;
     });
 
     const moodDistribution = {};
@@ -170,28 +177,30 @@ app.get('/api/stats', (req, res) => {
       };
     });
     secrets.forEach(s => {
-      if (moodDistribution[s.mood]) {
-        moodDistribution[s.mood].count++;
-      } else {
-        moodDistribution.regret.count++;
-      }
+      const moodKey = MOODS[s.mood] ? s.mood : DEFAULT_MOOD;
+      moodDistribution[moodKey].count++;
     });
 
     const last7Days = [];
+    const dayLabels = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'];
     for (let i = 6; i >= 0; i--) {
-      const date = new Date(now);
-      date.setDate(date.getDate() - i);
-      const dayStart = new Date(date.getFullYear(), date.getMonth(), date.getDate());
-      const dayEnd = new Date(date.getFullYear(), date.getMonth(), date.getDate() + 1);
+      const dayDate = new Date(now);
+      dayDate.setDate(dayDate.getDate() - i);
+      const dayStart = getLocalDayStart(dayDate);
+      const nextDayStart = new Date(dayStart);
+      nextDayStart.setDate(nextDayStart.getDate() + 1);
+
       const dayCount = secrets.filter(s => {
         const t = new Date(s.createdAt);
-        return t >= dayStart && t < dayEnd;
+        return t >= dayStart && t < nextDayStart;
       }).length;
-      const dayLabels = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'];
+
+      const isToday = i === 0;
       last7Days.push({
-        date: `${date.getMonth() + 1}/${date.getDate()}`,
-        day: dayLabels[date.getDay()],
-        count: dayCount
+        date: `${dayDate.getMonth() + 1}/${dayDate.getDate()}`,
+        day: dayLabels[dayDate.getDay()],
+        count: dayCount,
+        isToday
       });
     }
 
